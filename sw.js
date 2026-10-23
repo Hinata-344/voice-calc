@@ -1,5 +1,5 @@
-const CACHE = 'voice-calc-v8';
-const FILES = ['./', 'index.html', 'app.js?v=8', 'calc.js?v=8', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
+const CACHE = 'voice-calc-v9';
+const FILES = ['./', 'index.html', 'app.js?v=9', 'calc.js?v=9', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

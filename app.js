@@ -31,13 +31,16 @@
   }
 
   // ---------- 計算と表示 ----------
+  let view = { cls: 'idle', main: 'ここに結果が出ます', frac: '' };
   function setResult(text, cls) {
+    view = { cls: cls || '', main: text, frac: '' };
     resultEl.textContent = text;
     resultEl.className = cls || '';
   }
 
   // 答え: 小数を大きく、分数にできる場合は下に小さく添える
   function setAnswer(r) {
+    view = { cls: '', main: r.text, frac: r.frac || '' };
     resultEl.className = '';
     resultEl.textContent = '';
     const main = document.createElement('div');
@@ -122,15 +125,28 @@
 
   // 診断ログ(メニュー > 診断)。動かないときの原因調べ用
   const diagEl = $('diag');
-  const logs = [];
+  const LKEY = 'voice-calc-logs', RKEY = 'voice-calc-restore';
+  let logs = [];
+  try { logs = JSON.parse(sessionStorage.getItem(LKEY)) || []; } catch (e) { logs = []; }
   let t0 = Date.now();
   function dlog(msg) {
     logs.push(((Date.now() - t0) / 1000).toFixed(2) + 's ' + msg);
-    if (logs.length > 80) logs.shift();
+    if (logs.length > 120) logs.shift();
+    try { sessionStorage.setItem(LKEY, JSON.stringify(logs)); } catch (e) { /* 保存できなくても続行 */ }
     if (diagEl) diagEl.textContent = logs.join('\n');
   }
 
-  dlog('アプリ v8 を読み込みました');
+  // iOSのSafariは、読み込み後の2回目以降の録音で文字が返らないことがある。
+  // 録音が1回終わるたびにページを読み込み直し、毎回「最初の録音」の状態に戻す。
+  function scheduleReload() {
+    try {
+      sessionStorage.setItem(RKEY, JSON.stringify({ view, expr: exprEl.value, heard: heardEl.textContent }));
+    } catch (e) { return; }
+    dlog('reload');
+    setTimeout(() => location.reload(), 400);
+  }
+
+  dlog('アプリ v9 を読み込みました');
 
   function resetUi() {
     running = false;
@@ -163,9 +179,11 @@
     const heard = audioOn;
     resetUi();
     dlog('finish transcript=' + JSON.stringify(transcript) + ' discard=' + discard + ' audio=' + heard);
-    if (discard) return;
-    if (transcript) show(transcript, transcript);
-    else setResult(heard ? '音は拾えましたが、文字になりませんでした。もう一度、少しゆっくり話してください' : '録音が始まる前に終わりました。ボタンが赤くなってから話してください', 'err');
+    if (!discard) {
+      if (transcript) show(transcript, transcript);
+      else setResult(heard ? '音は拾えましたが、文字になりませんでした。もう一度、少しゆっくり話してください' : '録音が始まる前に終わりました。ボタンが赤くなってから話してください', 'err');
+    }
+    if (heard) scheduleReload();
   }
 
   // 録音を終えて結果を出す(音を拾い始めていれば stop、まだなら abort)
@@ -281,7 +299,7 @@
     }
     pressed = false;
     if (autoFinish) return; // 話し終えたら自動で計算
-    if (Date.now() - audioAt < 700) {
+    if (!transcript && Date.now() - audioAt < 700) {
       // 短く押しただけでは、文字が出る前に終わってしまう
       dlog('too short');
       discard = true;
@@ -334,6 +352,18 @@
     history = []; save(history); renderHistory();
   });
   renderHistory();
+
+  // ---------- 再読み込み後の復元 ----------
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(RKEY));
+    sessionStorage.removeItem(RKEY);
+    if (saved && saved.view) {
+      exprEl.value = saved.expr || '';
+      heardEl.textContent = saved.heard || '';
+      if (saved.view.frac || saved.view.cls === '') setAnswer({ text: saved.view.main, frac: saved.view.frac });
+      else setResult(saved.view.main, saved.view.cls);
+    }
+  } catch (e) { /* 復元できなくても通常起動 */ }
 
   // ---------- オフライン対応 ----------
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* file:// などでは登録できない */ });

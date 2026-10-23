@@ -72,6 +72,29 @@
     if (e.key === 'Enter') { e.preventDefault(); exprEl.blur(); show(exprEl.value); }
   });
 
+  // ---------- キーボードの音声入力(マイクキー)で話す ----------
+  // iOS標準の音声入力は許可ポップもなく安定している。入力が止まったら自動で計算する。
+  const TYPE_WAIT_MS = 1500;
+  let typeTimer = null;
+  function quietSolve(text) {
+    if (!text.trim()) return;
+    try { show(text); } catch (e) { /* ここには来ない */ }
+  }
+  exprEl.addEventListener('input', () => {
+    clearTimeout(typeTimer);
+    heardEl.textContent = '';
+    typeTimer = setTimeout(() => {
+      const t = exprEl.value;
+      try { Calc.solve(t); } catch (e) { return; } // 入力の途中は、エラーを出さずに待つ
+      show(t);
+    }, TYPE_WAIT_MS);
+  });
+  $('kbd').addEventListener('click', () => {
+    exprEl.value = '';
+    setResult('キーボードのマイクを押して話してください', 'idle');
+    exprEl.focus();
+  });
+
   // ---------- 音声認識(押している間だけ) ----------
   // iOSは許可ポップアップが出ると「指を離した」通知がページに届かない。
   // そのため pressed を複数のイベントで落とし、開始が遅れた場合は自動で止める。

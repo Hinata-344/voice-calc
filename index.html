@@ -56,6 +56,8 @@
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none;
   }
   #rec.on { background: var(--rec); transform: scale(1.12); box-shadow: 0 0 0 14px rgba(239,59,74,.18), 0 0 0 30px rgba(239,59,74,.08); }
+  .link-btn { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 999px; padding: 10px 18px; font-size: 14px; }
+  .link-btn:active { background: var(--line); }
   #hint { font-size: 12px; color: var(--sub); }
 
   /* メニュー */
@@ -102,6 +104,7 @@
   <footer>
     <button id="rec" aria-label="押している間だけ録音">🎤</button>
     <div id="hint">押している間だけ聞き取ります</div>
+    <button id="kbd" class="link-btn">うまくいかないときは、キーボードで話す</button>
   </footer>
 
   <div id="sheet-bg"></div>

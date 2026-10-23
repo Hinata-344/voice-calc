@@ -58,8 +58,13 @@
   });
 
   // ---------- 音声認識(押している間だけ) ----------
+  // iOSは許可ポップアップが出ると「指を離した」通知がページに届かない。
+  // そのため pressed を複数のイベントで落とし、開始が遅れた場合は自動で止める。
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, holding = false, transcript = '', running = false;
+  const LATE_START_MS = 1200;   // 押してから録音開始までこれ以上かかったら、許可ポップが出たとみなす
+  const MAX_REC_MS = 30000;     // 押しっぱなしの上限
+  let rec = null, pressed = false, running = false, discard = false;
+  let transcript = '', pressedAt = 0, watchdog = null;
 
   if (!SR) {
     hintEl.textContent = 'このブラウザは音声認識に未対応です。式欄のキーボードのマイクを使ってください';
@@ -67,61 +72,91 @@
     recBtn.style.opacity = .4;
   }
 
+  function resetUi() {
+    running = false;
+    clearTimeout(watchdog);
+    recBtn.classList.remove('on');
+    hintEl.textContent = '押している間だけ聞き取ります';
+  }
+
   function startRec() {
-    if (!SR || running) return;
-    holding = true;
+    if (!SR || rec) return;
     transcript = '';
+    discard = false;
     heardEl.textContent = '';
-    rec = new SR();
-    rec.lang = 'ja-JP';
-    rec.interimResults = true;
-    rec.continuous = true;
-    rec.maxAlternatives = 1;
-    rec.onstart = () => { running = true; };
-    rec.onresult = (ev) => {
+    pressedAt = Date.now();
+    const r = new SR();
+    rec = r;
+    r.lang = 'ja-JP';
+    r.interimResults = true;
+    r.continuous = true;
+    r.maxAlternatives = 1;
+    r.onstart = () => {
+      running = true;
+      const late = Date.now() - pressedAt > LATE_START_MS;
+      if (!pressed || late) {
+        // 許可ポップを挟んだ場合など。離した通知が来ていないので、ここで止めて押し直してもらう
+        discard = true;
+        pressed = false;
+        try { r.abort(); } catch (e) { /* 既に停止 */ }
+        if (late) setResult('許可されました。もう一度ボタンを押して話してください', 'idle');
+        return;
+      }
+      recBtn.classList.add('on');
+      hintEl.textContent = '聞き取り中… 離すと計算します';
+      watchdog = setTimeout(release, MAX_REC_MS);
+    };
+    r.onresult = (ev) => {
       let t = '';
       for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
       transcript = t;
       heardEl.textContent = '聞き取り: ' + t;
       try { exprEl.value = Calc.normalize(t); } catch (e) { /* 途中経過なので無視 */ }
     };
-    rec.onerror = (ev) => {
+    r.onerror = (ev) => {
+      discard = true;
       const msg = {
         'not-allowed': 'マイクまたは音声認識が許可されていません(設定で許可してください)',
         'service-not-allowed': '音声認識が許可されていません(設定 > Siriと検索 / キーボードの音声入力を確認)',
         'no-speech': '声が聞き取れませんでした',
         'audio-capture': 'マイクが使えません',
-        'network': '音声認識の通信に失敗しました',
+        'network': '音声認識の通信に失敗しました(Siriと音声入力がオンか確認)',
       }[ev.error];
       if (msg) setResult(msg, 'err');
     };
-    rec.onend = () => {
-      running = false;
-      recBtn.classList.remove('on');
-      hintEl.textContent = '押している間だけ聞き取ります';
+    r.onend = () => {
+      rec = null;
+      pressed = false;
+      resetUi();
+      if (discard) return;
       if (transcript) show(transcript, transcript);
-      else if (!resultEl.classList.contains('err')) setResult('声が聞き取れませんでした', 'err');
+      else setResult('声が聞き取れませんでした', 'err');
     };
     try {
-      rec.start();
-      recBtn.classList.add('on');
-      hintEl.textContent = '聞き取り中… 離すと計算します';
-      if (navigator.vibrate) navigator.vibrate(10);
+      r.start();
     } catch (e) {
+      rec = null;
       setResult('録音を開始できませんでした: ' + e.message, 'err');
     }
   }
 
-  function stopRec() {
-    if (!holding) return;
-    holding = false;
-    if (rec && running) { try { rec.stop(); } catch (e) { /* 既に停止 */ } }
-    else recBtn.classList.remove('on');
+  // 指を離した / 中断された。開始前でも開始後でも安全に呼べる。
+  function release() {
+    pressed = false;
+    if (!rec) { resetUi(); return; }
+    if (running) { try { rec.stop(); } catch (e) { /* 既に停止 */ } }
+    else { discard = true; try { rec.abort(); } catch (e) { /* 開始前 */ } }
   }
 
-  recBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); try { recBtn.setPointerCapture(e.pointerId); } catch (_) { /* 非対応でも続行 */ } startRec(); });
-  recBtn.addEventListener('pointerup', stopRec);
-  recBtn.addEventListener('pointercancel', stopRec);
+  recBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (rec) { discard = true; try { rec.abort(); } catch (_) { /* */ } return; } // 固まったときは、もう一度押せば止まる
+    pressed = true;
+    startRec();
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => recBtn.addEventListener(t, release));
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach((t) => window.addEventListener(t, release));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
   recBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // ---------- メニュー ----------

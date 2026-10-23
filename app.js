@@ -130,6 +130,8 @@
     if (diagEl) diagEl.textContent = logs.join('\n');
   }
 
+  dlog('アプリ v6 を読み込みました');
+
   function resetUi() {
     running = false;
     audioOn = false;

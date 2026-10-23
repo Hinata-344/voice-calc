@@ -1,5 +1,5 @@
-const CACHE = 'voice-calc-v1';
-const FILES = ['./', 'index.html', 'app.js', 'calc.js', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
+const CACHE = 'voice-calc-v6';
+const FILES = ['./', 'index.html', 'app.js?v=6', 'calc.js?v=6', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -15,7 +15,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request)
+    fetch(new Request(e.request.url, { cache: 'reload' }))
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));

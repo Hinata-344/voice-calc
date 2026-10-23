@@ -117,7 +117,7 @@
   const NO_SPEECH_MS = 12000;   // 自動終了モードで、まったく話さなかったときの上限
   const START_WAIT_MS = 8000;   // 押してから録音が始まらないときの上限
   // audioOn: 実際に音を拾い始めた / autoFinish: 話し終えたら自動で計算するモード
-  let audioOn = false, autoFinish = false, quietMs = SILENCE_MS;
+  let audioOn = false, autoFinish = false, settling = false, audioAt = 0, quietMs = SILENCE_MS;
   let silenceTimer = null, endTimer = null, startTimer = null;
 
   // 診断ログ(メニュー > 診断)。動かないときの原因調べ用
@@ -130,12 +130,13 @@
     if (diagEl) diagEl.textContent = logs.join('\n');
   }
 
-  dlog('アプリ v7 を読み込みました');
+  dlog('アプリ v8 を読み込みました');
 
   function resetUi() {
     running = false;
     audioOn = false;
     autoFinish = false;
+    settling = false;
     clearTimeout(watchdog);
     clearTimeout(silenceTimer);
     clearTimeout(startTimer);
@@ -197,6 +198,7 @@
   function beginCapture() {
     if (audioOn) return;
     audioOn = true;
+    audioAt = Date.now();
     clearTimeout(startTimer);
     const late = Date.now() - pressedAt > LATE_START_MS;
     autoFinish = !pressed || late; // 指が離れている or 離した通知が届いていない可能性がある
@@ -237,6 +239,7 @@
     r.onerror = (ev) => {
       if (rec !== r) return;
       dlog('error ' + ev.error);
+      if (ev.error === 'aborted') return; // 自分で止めたときに出る。終了処理は onend が行う
       discard = true;
       const msg = {
         'not-allowed': 'マイクまたは音声認識が許可されていません(設定で許可してください)',
@@ -278,17 +281,31 @@
     }
     pressed = false;
     if (autoFinish) return; // 話し終えたら自動で計算
+    if (Date.now() - audioAt < 700) {
+      // 短く押しただけでは、文字が出る前に終わってしまう
+      dlog('too short');
+      discard = true;
+      stopNow();
+      setResult('短すぎます。ボタンを押したまま話して、話し終えてから離してください', 'err');
+      return;
+    }
     // 押している間だけモード: 離した直後に止めると文字が出る前に切れるので、出そろうのを待つ
     autoFinish = true;
+    settling = true;
     quietMs = SETTLE_MS;
     hintEl.textContent = '変換中…';
+    setResult('変換中…', 'idle');
     armQuiet();
   }
 
   recBtn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     dlog('press');
-    if (rec && audioOn && autoFinish) { stopNow(); return; } // 自動終了/変換待ちの最中にもう一度押すと、今すぐ計算
+    if (rec && audioOn && autoFinish) {
+      if (settling) { dlog('press ignored (converting)'); return; } // 変換待ちの間は押しても邪魔しない
+      stopNow();
+      return;
+    } // 自動終了/変換待ちの最中にもう一度押すと、今すぐ計算
     kill(); // 前回の録音が残っていても、必ず新しく始める
     clearTimeout(typeTimer);
     exprEl.value = ''; // 前回の式・結果を消して、新しい入力だけを表示する

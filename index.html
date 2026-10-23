@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>声の電卓</title>
+<meta name="description" content="音声で式や1次方程式を入力して答えを出す計算機">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="声の電卓">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1115">
+<style>
+  :root {
+    --bg: #f4f5f7; --fg: #15171c; --sub: #6b7280; --card: #ffffff; --line: #e3e5ea;
+    --accent: #2f6bff; --rec: #ef3b4a; --err: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --fg: #f1f2f5; --sub: #9097a3; --card: #181b22; --line: #272b34; --accent: #6b94ff; --rec: #ff5563; --err: #ff7b6e; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    display: flex; flex-direction: column; overscroll-behavior: none;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+  }
+  header { display: flex; justify-content: space-between; align-items: center; height: 52px; }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--sub); letter-spacing: .05em; }
+  .icon-btn { background: none; border: 0; color: var(--fg); font-size: 26px; width: 44px; height: 44px; border-radius: 12px; }
+  .icon-btn:active { background: var(--line); }
+
+  main { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; min-height: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; }
+  .label { font-size: 11px; color: var(--sub); letter-spacing: .08em; margin-bottom: 6px; }
+  #heard { font-size: 13px; color: var(--sub); min-height: 18px; word-break: break-all; margin-top: 6px; }
+  #expr {
+    width: 100%; border: 0; outline: 0; background: transparent; color: var(--fg);
+    font: 500 28px/1.3 ui-monospace, "SF Mono", Menlo, monospace; padding: 0;
+  }
+  #expr::placeholder { color: var(--sub); opacity: .5; }
+  #result { font-size: 40px; font-weight: 700; min-height: 52px; word-break: break-all; }
+  #result.err { font-size: 16px; font-weight: 500; color: var(--err); line-height: 1.5; }
+  #result.idle { color: var(--sub); font-size: 16px; font-weight: 400; }
+
+  footer { padding: 8px 0 28px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  #rec {
+    width: 104px; height: 104px; border-radius: 50%; border: 0; background: var(--accent); color: #fff;
+    font-size: 44px; display: grid; place-items: center;
+    box-shadow: 0 8px 24px rgba(47,107,255,.35); transition: transform .12s, background .12s;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none;
+  }
+  #rec.on { background: var(--rec); transform: scale(1.12); box-shadow: 0 0 0 14px rgba(239,59,74,.18), 0 0 0 30px rgba(239,59,74,.08); }
+  #hint { font-size: 12px; color: var(--sub); }
+
+  /* メニュー */
+  #sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; max-height: 82%; overflow-y: auto;
+    background: var(--bg); border-radius: 22px 22px 0 0; padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+    transform: translateY(105%); transition: transform .25s ease;
+  }
+  body.menu #sheet { transform: none; }
+  body.menu #sheet-bg { opacity: 1; pointer-events: auto; }
+  .tabs { display: flex; gap: 8px; margin: 4px 0 14px; }
+  .tab { flex: 1; padding: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 12px; font-size: 14px; }
+  .tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pane { display: none; } .pane.on { display: block; }
+  .hist { display: block; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); color: var(--fg); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; }
+  .hist b { display: block; font-size: 18px; margin-top: 2px; }
+  .hist small { color: var(--sub); }
+  .danger { color: var(--err); background: none; border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 7px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--sub); white-space: nowrap; padding-right: 12px; }
+  p.note { font-size: 12px; color: var(--sub); line-height: 1.6; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>声の電卓</h1>
+    <button class="icon-btn" id="menu-btn" aria-label="メニュー">☰</button>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="label">式</div>
+      <input id="expr" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="ボタンを押して話す">
+      <div id="heard"></div>
+    </section>
+    <section class="card">
+      <div class="label">答え</div>
+      <div id="result" class="idle">ここに結果が出ます</div>
+    </section>
+  </main>
+
+  <footer>
+    <button id="rec" aria-label="押している間だけ録音">🎤</button>
+    <div id="hint">押している間だけ聞き取ります</div>
+  </footer>
+
+  <div id="sheet-bg"></div>
+  <aside id="sheet" aria-hidden="true">
+    <div class="tabs">
+      <button class="tab on" data-pane="history">履歴</button>
+      <button class="tab" data-pane="help">使い方</button>
+      <button class="tab" data-pane="close">閉じる</button>
+    </div>
+    <div class="pane on" id="pane-history">
+      <div id="hist-list"></div>
+      <button class="danger" id="hist-clear">履歴をすべて消す</button>
+    </div>
+    <div class="pane" id="pane-help">
+      <table>
+        <tr><td>足し算</td><td>「2 たす 3」</td></tr>
+        <tr><td>引き算</td><td>「5 ひく 2」「マイナス」</td></tr>
+        <tr><td>掛け算</td><td>「4 かける 5」</td></tr>
+        <tr><td>割り算</td><td>「10 わる 4」「3分の2」</td></tr>
+        <tr><td>かっこ</td><td>「かっこ 2 たす 3 かっことじ かける 4」</td></tr>
+        <tr><td>べき乗</td><td>「2の3乗」「3の2乗」</td></tr>
+        <tr><td>ルート</td><td>「ルート 16」</td></tr>
+        <tr><td>小数</td><td>「3点14」</td></tr>
+        <tr><td>方程式</td><td>「2エックス たす 3 イコール 11」</td></tr>
+        <tr><td>修正</td><td>式の欄は直接編集できます(Enterで再計算)</td></tr>
+      </table>
+      <p class="note">方程式は1次までです。聞き取りが怪しいときは、式の欄をタップして、キーボードのマイクでも入力できます。</p>
+    </div>
+  </aside>
+
+<script src="calc.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

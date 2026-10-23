@@ -79,8 +79,33 @@
     hintEl.textContent = '押している間だけ聞き取ります';
   }
 
+  const END_WAIT_MS = 2500;     // stop() 後に終了通知が来なければ、こちらで終わらせる
+  let endTimer = null;
+
+  // 認識を完全に捨てて、次の押下を受け付けられる状態に戻す
+  function kill() {
+    const r = rec;
+    rec = null;
+    pressed = false;
+    clearTimeout(endTimer);
+    resetUi();
+    if (r) { try { r.abort(); } catch (e) { /* 既に停止 */ } }
+  }
+
+  // 認識が終わったときの後始末。onend が来なくても endTimer から呼ばれる。
+  function finish(r) {
+    if (rec !== r) return;
+    rec = null;
+    pressed = false;
+    clearTimeout(endTimer);
+    resetUi();
+    if (discard) return;
+    if (transcript) show(transcript, transcript);
+    else setResult('声が聞き取れませんでした', 'err');
+  }
+
   function startRec() {
-    if (!SR || rec) return;
+    if (!SR) return;
     transcript = '';
     discard = false;
     heardEl.textContent = '';
@@ -92,13 +117,12 @@
     r.continuous = true;
     r.maxAlternatives = 1;
     r.onstart = () => {
+      if (rec !== r) return;
       running = true;
       const late = Date.now() - pressedAt > LATE_START_MS;
       if (!pressed || late) {
         // 許可ポップを挟んだ場合など。離した通知が来ていないので、ここで止めて押し直してもらう
-        discard = true;
-        pressed = false;
-        try { r.abort(); } catch (e) { /* 既に停止 */ }
+        kill();
         if (late) setResult('許可されました。もう一度ボタンを押して話してください', 'idle');
         return;
       }
@@ -107,6 +131,7 @@
       watchdog = setTimeout(release, MAX_REC_MS);
     };
     r.onresult = (ev) => {
+      if (rec !== r) return;
       let t = '';
       for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
       transcript = t;
@@ -114,6 +139,7 @@
       try { exprEl.value = Calc.normalize(t); } catch (e) { /* 途中経過なので無視 */ }
     };
     r.onerror = (ev) => {
+      if (rec !== r) return;
       discard = true;
       const msg = {
         'not-allowed': 'マイクまたは音声認識が許可されていません(設定で許可してください)',
@@ -123,19 +149,14 @@
         'network': '音声認識の通信に失敗しました(Siriと音声入力がオンか確認)',
       }[ev.error];
       if (msg) setResult(msg, 'err');
+      // エラー後に onend が来ないことがあるので、ここで確実に終わらせる
+      endTimer = setTimeout(() => finish(r), 300);
     };
-    r.onend = () => {
-      rec = null;
-      pressed = false;
-      resetUi();
-      if (discard) return;
-      if (transcript) show(transcript, transcript);
-      else setResult('声が聞き取れませんでした', 'err');
-    };
+    r.onend = () => finish(r);
     try {
       r.start();
     } catch (e) {
-      rec = null;
+      kill();
       setResult('録音を開始できませんでした: ' + e.message, 'err');
     }
   }
@@ -144,14 +165,22 @@
   function release() {
     pressed = false;
     if (!rec) { resetUi(); return; }
-    if (running) { try { rec.stop(); } catch (e) { /* 既に停止 */ } }
-    else { discard = true; try { rec.abort(); } catch (e) { /* 開始前 */ } }
+    const r = rec;
+    if (running) {
+      try { r.stop(); } catch (e) { /* 既に停止 */ }
+      endTimer = setTimeout(() => finish(r), END_WAIT_MS);
+    } else {
+      discard = true;
+      try { r.abort(); } catch (e) { /* 開始前 */ }
+      endTimer = setTimeout(() => finish(r), 300);
+    }
   }
 
   recBtn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (rec) { discard = true; try { rec.abort(); } catch (_) { /* */ } return; } // 固まったときは、もう一度押せば止まる
+    kill(); // 前回の録音が残っていても、必ず新しく始める
     pressed = true;
+    running = false;
     startRec();
   });
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => recBtn.addEventListener(t, release));

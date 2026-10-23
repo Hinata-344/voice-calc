@@ -172,6 +172,31 @@
     return String(s).replace('-', '−');
   }
 
+  // 小数 → 分数(分母10000まで、誤差1e-10以内のときだけ)。整数や近似できないものは null。
+  function toFraction(v) {
+    if (!isFinite(v) || Number.isInteger(v)) return null;
+    const sign = v < 0 ? -1 : 1;
+    const x = Math.abs(v);
+    let h0 = 0, h1 = 1, k0 = 1, k1 = 0, b = x;
+    for (let i = 0; i < 40; i++) {
+      const a = Math.floor(b);
+      const h2 = a * h1 + h0, k2 = a * k1 + k0;
+      if (k2 > 10000) return null;
+      h0 = h1; h1 = h2; k0 = k1; k1 = k2;
+      if (Math.abs(x - h1 / k1) <= 1e-10 * Math.max(1, x)) return { n: sign * h1, d: k1 };
+      const f = b - a;
+      if (f < 1e-12) return null;
+      b = 1 / f;
+    }
+    return null;
+  }
+
+  function fracOf(v, prefix) {
+    const f = toFraction(v);
+    if (!f) return null;
+    return (prefix || '') + (f.n < 0 ? '−' : '') + Math.abs(f.n) + '/' + f.d;
+  }
+
   // 式(または1次方程式)を解く。expr は正規化済みでも生の話し言葉でもよい。
   function solve(input) {
     const expr = normalize(input);
@@ -182,7 +207,7 @@
       // 式の評価
       const v = evalLinear(parts[0]);
       if (Math.abs(v.a) > EPS) throw new Error('xが含まれています。「=」を付けて方程式にしてください');
-      return { expr, kind: 'value', text: fmt(v.b) };
+      return { expr, kind: 'value', text: fmt(v.b), frac: fracOf(v.b) };
     }
     const l = evalLinear(parts[0]);
     const r = evalLinear(parts[1]);
@@ -194,8 +219,8 @@
       }
       return { expr, kind: l.a === 0 && r.a === 0 ? 'bool' : 'none', text: l.a === 0 && r.a === 0 ? '成り立たない(誤り)' : '解なし' };
     }
-    return { expr, kind: 'solution', text: 'x = ' + fmt(b / a) };
+    return { expr, kind: 'solution', text: 'x = ' + fmt(b / a), frac: fracOf(b / a, 'x = ') };
   }
 
-  return { normalize, solve, kanjiToNum };
+  return { normalize, solve, kanjiToNum, toFraction };
 });

@@ -50,4 +50,9 @@ for (const bad of ['', '2+', '(2+3', '2+3)', '1÷0', 'x×x=4', 'ルートマイ�
 }
 assert.throws(() => solve('2+3x'), /xが含まれて/);
 
+const fr = [['10わる4', '5/2'], ['10わる3', '10/3'], ['1わる3', '1/3'], ['0ひく3わる4', '−3/4'], ['0.1たす0.2', '3/10'], ['6わる3', null], ['ルート2', null], ['3.14', '157/50']];
+for (const [i, o] of fr) assert.strictEqual(solve(i).frac, o, `${i} frac → ${solve(i).frac} (expected ${o})`);
+assert.strictEqual(solve('3x=1').frac, 'x = 1/3');
+assert.strictEqual(solve('2x+3=11').frac, null);
+
 console.log('all tests passed:', cases.length + eq.length + 11);

@@ -43,6 +43,8 @@
   }
   #expr::placeholder { color: var(--sub); opacity: .5; }
   #result { font-size: 40px; font-weight: 700; min-height: 52px; word-break: break-all; }
+  #result .frac { font-size: 20px; font-weight: 500; color: var(--sub); margin-top: 6px; }
+  #diag { font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; color: var(--sub); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 80px; }
   #result.err { font-size: 16px; font-weight: 500; color: var(--err); line-height: 1.5; }
   #result.idle { color: var(--sub); font-size: 16px; font-weight: 400; }
 
@@ -107,11 +109,16 @@
     <div class="tabs">
       <button class="tab on" data-pane="history">履歴</button>
       <button class="tab" data-pane="help">使い方</button>
+      <button class="tab" data-pane="diag">診断</button>
       <button class="tab" data-pane="close">閉じる</button>
     </div>
     <div class="pane on" id="pane-history">
       <div id="hist-list"></div>
       <button class="danger" id="hist-clear">履歴をすべて消す</button>
+    </div>
+    <div class="pane" id="pane-diag">
+      <p class="note">動かないときの原因調べ用です。うまくいかなかった直後に、この内容を教えてください。</p>
+      <pre id="diag">(まだ記録はありません)</pre>
     </div>
     <div class="pane" id="pane-help">
       <table>

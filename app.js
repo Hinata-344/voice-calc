@@ -130,7 +130,7 @@
     if (diagEl) diagEl.textContent = logs.join('\n');
   }
 
-  dlog('アプリ v6 を読み込みました');
+  dlog('アプリ v7 を読み込みました');
 
   function resetUi() {
     running = false;
@@ -290,6 +290,10 @@
     dlog('press');
     if (rec && audioOn && autoFinish) { stopNow(); return; } // 自動終了/変換待ちの最中にもう一度押すと、今すぐ計算
     kill(); // 前回の録音が残っていても、必ず新しく始める
+    clearTimeout(typeTimer);
+    exprEl.value = ''; // 前回の式・結果を消して、新しい入力だけを表示する
+    heardEl.textContent = '';
+    setResult('ここに結果が出ます', 'idle');
     pressed = true;
     startRec();
   });
